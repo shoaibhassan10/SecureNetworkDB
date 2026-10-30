@@ -1,0 +1,100 @@
+Here is the complete and structured project documentation for **`SecureNetworkDB`**. You can copy this content directly into a markdown (`.md`) file or your project repository description.
+
+---
+
+# Project Documentation: `SecureNetworkDB`
+
+**Enterprise Identity & Access Management (IAM) and SIEM Security System**
+
+---
+
+## 1. Project Overview & Real-World Role
+
+`SecureNetworkDB` is an enterprise-grade backend database and web application designed to act as a **Zero Trust Security Gatekeeper** and **SIEM Audit Logger**.
+
+In the physical world, `SecureNetworkDB` functions similarly to corporate identity providers (such as Okta or Microsoft Entra ID) paired with a Security Operations Center (SOC) monitoring platform. It performs two critical functions:
+
+1. **Identity & Access Control:** Manages user identities, clearances, passwords, and a secure **Personal Credential Vault** where employees store and protect sensitive enterprise secrets.
+2. **SIEM Threat Detection:** Tracks every login, access attempt, and failure in an immutable audit trail, using advanced relational subqueries to automatically flag brute-force attacks and compromised accounts.
+
+---
+
+## 2. Database Schema & Entities
+
+The system relies on three core relational tables housed within SQL Server (`SecureNetworkDB`):
+
+### Table A: `Users` (IAM Identity Directory)
+
+Stores user profiles, access control tiers, and authentication credentials.
+
+* `UserID` (`INT`, Primary Key): Unique numerical identifier for each user.
+* `Username` (`VARCHAR(50)`): System login handle.
+* `ClearanceTier` (`INT`): Authority level determining system capabilities (Tier 3 = Admin, Tier 2 = Operator, Tier 1 = Analyst, Tier 0 = Locked/Intruder).
+* `AccountStatus` (`VARCHAR(20)`): Current account state (`'Active'`, `'Locked'`, `'Pending_Audit'`).
+* `Password` (`VARCHAR(255)`): Secure login password.
+
+### Table B: `Audit_Logs` (Zero Trust SIEM Trail)
+
+Tracks all security events, access requests, and authentication anomalies.
+
+* `LogID` (`INT`, IDENTITY Primary Key): Unique auto-incrementing log entry ID.
+* `UserID` (`INT`, Foreign Key references `Users(UserID)`): The user associated with the event.
+* `LoginTime` (`DATETIME`, Default `GETDATE()`): Timestamp of the event.
+* `Status` (`VARCHAR(20)`): Event classification (`'Granted'`, `'Denied'`, `'MFA_Failed'`, `'Success'`, `'Pending_MFA'`).
+
+### Table C: `User_Vault` (Personal Credential Storage)
+
+Stores sensitive encrypted secrets (API keys, SSH keys, server root passwords) owned by individual users.
+
+* `VaultID` (`INT`, IDENTITY Primary Key): Unique identifier for the vault record.
+* `UserID` (`INT`, Foreign Key references `Users(UserID)`): Owner of the secret.
+* `CredentialName` (`VARCHAR(100)`): Label of the secret (e.g., *Prod Firewall SSH Key*).
+* `ProtectedSecret` (`VARCHAR(255)`): The sensitive string/password.
+* `SecurityClassification` (`VARCHAR(30)`): Sensitivity tier (*Confidential*, *Top Secret*, *Restricted*).
+* `LastUpdated` (`DATETIME`, Default `GETDATE()`): Timestamp of the last modification.
+
+---
+
+## 3. Team Roster & Initial Credentials
+
+| UserID | Username / Full Name | Role | Clearance Tier | Password | Account Status |
+| --- | --- | --- | --- | --- | --- |
+| **`2412348`** | `balti_admin` (Shoaib Balti) | System Administrator | **Tier 3** | `Balti123` | `Active` |
+| **`2412372`** | `Touqeer Ahmed` | Security Operator | **Tier 2** | `Touqeer123` | `Active` |
+| **`2412342`** | `Sidra Naz` | Security Operator | **Tier 2** | `Sidra123` | `Active` |
+| **`2412349`** | `sarah_operator` | Security Operator | **Tier 2** | `Operator123` | `Active` |
+| **`2412329`** | `Aleeza Javed` | SOC Analyst | **Tier 1** | `Aleeza123` | `Active` |
+| **`24123493`** | `Kazma Badar` | SOC Analyst | **Tier 1** | `Kazma123` | `Pending_Audit` |
+
+---
+
+## 4. Key Features & Advanced DBMS Concepts
+
+### A. Transaction Management & ACID Compliance
+
+* **Atomicity:** Utilizes explicit transaction blocks (`BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK`) and `TRY...CATCH` blocks. If an operation fails midway (such as an incomplete audit write), a rollback is triggered, preventing partial or "ghost" data states.
+* **Savepoints (`SAVE TRANSACTION mfa_check`):** Allows partial rollbacks during multi-step authentication (e.g., wiping a failed MFA attempt while keeping the core login session alive).
+* **Durability:** Ensured via `COMMIT`, permanently writing committed changes to non-volatile storage.
+
+### B. Concurrency Control & Isolation
+
+* **Exclusive Locks & 2PL:** Prevents concurrency anomalies (such as **Dirty Reads / Uncommitted Dependencies** and **Lost Updates**) by holding exclusive row-level locks during active updates.
+* **Testing with Delays:** Uses `WAITFORDELAY` in test windows to intentionally keep transactions open, demonstrating how concurrent sessions freeze and wait to protect data consistency.
+
+### C. Advanced SQL Threat Detection (Subquery & Grouping)
+
+The system executes automated SIEM checks to identify compromised or brute-forced accounts using complex grouping and subqueries:
+
+```sql
+SELECT u.Username, COUNT(a.LogID) as Total_Failed_Attempts
+FROM Users u
+JOIN Audit_Logs a ON u.UserID = a.UserID
+WHERE a.Status = 'Denied' OR a.Status = 'MFA_Failed'
+GROUP BY u.Username
+HAVING COUNT(a.LogID) > (SELECT AVG(ClearanceTier) FROM Users);
+
+```
+
+### D. Stored Procedures (`Validate_Access`)
+
+Encapsulates procedural security logic on the database server. It checks user clearance and status, logs the outcome (`Granted` or `Denied`), returns a `BIT` output parameter, and automatically catches exceptions to execute safe rollbacks.
